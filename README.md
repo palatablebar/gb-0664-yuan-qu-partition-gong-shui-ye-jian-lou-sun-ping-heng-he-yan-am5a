@@ -22,6 +22,17 @@ docker compose config --quiet
 - 质量隔离：按原因码定位异常证据，入口 `/quarantine` 与 `GET /api/quarantine`。
 - 阈值复核：复算误差上下界与水量守恒，入口 `/reconcile` 与 `GET /api/reconcile`。
 - 批次归档：幂等重跑与版本复核，入口 `/batches` 与 `GET /api/batches`。
+- 夜间处置：同一页面给出当晚处置顺序、分区残差与可信区间、原始读数、跨区转供去向与版本追溯，入口 `/tickets` 与 `GET /api/tickets`。
+
+## 夜间处置单
+
+`/tickets` 为同一晚只保留一张处置单，按夜次切片重算，不把跨夜合计当作单晚结论。
+
+- 顺序：先已确认（漏损 / 倒挂），后待确认（待观察），同一层内残差从大到小。残差大但区间跨阈值的分区排在已确认漏损之后。
+- 证据：每区带残差、误差上下界、可信度、原始读数（来源行、原值、单位、归一值、误差）与跨区转供去向（`→ 去向` / `← 来源`，含表号与来源行）。
+- 幂等：摘要由夜次、阈值、规则版本与各分区结论/读数生成。同一晚相同结论重跑沿用原单，不新增处置单；读数或阈值变化才生成新版本并保留旧版。
+- 失败：写库为单事务，生成失败时回滚，旧版本仍可读取。
+- 追溯：`/tickets?night=YYYY-MM-DD&version=N` 查看旧结论并导出该版证据；`GET /api/tickets/{night}/history` 列出全部版本。
 
 ## 演示
 选择样例后运行，核对业务结论与来源行。异常行保留原值和原因码。复核提交使用当前版本；旧版本返回 409。CSV证据只保留一个归档入口。
@@ -30,6 +41,9 @@ docker compose config --quiet
 - `POST /api/runs`：JSON 中可指定 `sample`、`text` 与 `params`。
 - `POST /api/runs/{run_id}/review`：提交 `revision`、`decision`。
 - `GET /api/runs/{run_id}/evidence.csv`：来源证据。
+- `GET /api/tickets`：查询参数 `sample`、`threshold`、`night`、`version`；缺省返回当晚处置单并落库。
+- `GET /api/tickets/{night}/history`：夜次版本清单。
+- `GET /api/tickets/{night}/evidence.csv`：处置单证据，可加 `?version=N`。
 - `GET /docs`：接口定义。
 
 ## 数据保存

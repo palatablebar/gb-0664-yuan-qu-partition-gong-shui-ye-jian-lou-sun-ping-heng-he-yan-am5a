@@ -14,6 +14,7 @@
 | M5 质量隔离 | 按原因码定位异常证据 | `GET /api/quarantine` | `app/modules/m5_quarantine/service.py` `app/modules/m5_quarantine/rules.py` | `tests/test_quarantine.py` |
 | M6 阈值复核 | 复算误差上下界与水量守恒 | `GET /api/reconcile` | `app/modules/m6_reconcile/service.py` `app/modules/m6_reconcile/rules.py` | `tests/test_reconcile.py` |
 | M7 批次归档 | 幂等重跑与版本复核 | `GET /api/batches` | `app/modules/m7_batches/service.py` `app/modules/m7_batches/rules.py` | `tests/test_batches.py` |
+| M8 夜间处置 | 当晚处置顺序、单夜处置单与版本追溯 | `GET /api/tickets` | `app/modules/m8_tickets/service.py` `app/modules/m8_tickets/rules.py` | `tests/test_tickets.py` |
 
 ## 陷阱登记
 
@@ -30,9 +31,15 @@
 | TRAP-21 | 流向关系不一致 | 静默误算或覆盖证据 | 目录和台账双向字段比对 | `app/modules/m3_model/rules.py` | `tests/test_model.py::test_bad_direction` |
 | TRAP-23 | 夜间边界 | 静默误算或覆盖证据 | 当地00:00含、05:00不含 | `app/modules/m4_calculate/rules.py` | `tests/test_calculate.py::test_night_boundary` |
 | TRAP-26 | 陈旧复核 | 静默误算或覆盖证据 | 条件更新修订号 | `app/modules/m7_batches/rules.py` | `tests/test_batches.py::test_stale` |
+| TRAP-27 | 只按水量排序 | 先查残差大但区间跨阈值的分区，延误已确认漏损 | 确定性分层：已确认（漏损/倒挂）先于待确认，层内再按水量 | `app/modules/m8_tickets/rules.py` | `tests/test_tickets.py::test_certainty_before_volume` |
+| TRAP-28 | 夜次混算 | 跨夜合并掩盖单晚漏损，证据跨晚混杂 | 按夜次切片重算并单独开单 | `app/modules/m8_tickets/service.py` | `tests/test_tickets.py::test_each_night_own_ticket` |
+| TRAP-29 | 重跑重复开单 | 同一晚每次重跑新增处置单 | 以结论与读数摘要判重，同摘要为空操作，变化才升版本 | `app/modules/m8_tickets/service.py` | `tests/test_tickets.py::test_one_ticket_per_night` |
+| TRAP-30 | 生成失败半写 | 新版本写入一半，旧结论不可用 | 单事务写当前版与版本表，失败回滚保留旧版 | `app/store.py` | `tests/test_tickets.py::test_publish_is_transactional` |
 
 ## 对账规则
 输入行数=有效行+隔离行+空行。供水量=售水量+授权用水+各区残差。value为原值，unit支持m3与L，value_m3为立方米。error_pct在0至10之间，误差按每条计量绝对值相加；不假设独立随机误差。时间必须含偏移，先转UTC；夜间为中国标准时间[00:00,05:00)。
+
+处置单按夜次切片，以确定性分层排序：已确认（漏损、倒挂）先于待确认（待观察），同层按残差降序。夜次为主键，同结论重跑不新增处置单，变化才升版本；写库单事务，失败保留旧版。
 
 ## 已知不覆盖
 不推断缺失表的读数，不做管网压力仿真。计量目录只允许无环转供，复杂回流管网需先另建可辨识模型。

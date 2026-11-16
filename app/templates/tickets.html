@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% block panels %}
+<section class="panel primary-panel">
+  <div class="panel__head"><h2>当晚处置顺序</h2><span>{{ data.ticket.night }} · v{{ data.ticket.version }}</span></div>
+  <div class="panel__body">
+    <p class="verdict" id="headline">{{ data.ticket.headline }}</p>
+    <div class="ticket-meta">
+      <span>夜次 <b>{{ data.ticket.night }}</b></span>
+      <span>阈值 <b>{{ data.ticket.threshold }} m³</b></span>
+      <span>读数 <b>{{ data.ticket.line_count }} 行</b></span>
+      <span>状态 <b>{{ '沿用已有处置单' if not data.ticket.created else ('新开处置单' if not data.ticket.superseded else '已更新，替代 v' ~ data.ticket.superseded) }}</b></span>
+      {% if data.ticket.is_historical %}<span class="bad">历史版本，非当前结论</span>{% endif %}
+    </div>
+    <p class="sort-note">排序规则：已确认（漏损 / 倒挂）先于待确认（待观察），同一层内按残差水量从大到小；不按水量单独排序。</p>
+    {% if data.ticket.nights and data.ticket.nights|length > 1 %}
+    <div class="night-picker">夜次：{% for n in data.ticket.nights %}<a class="btn {{ 'primary' if n==data.ticket.night else '' }}" href="/tickets?night={{ n }}">{{ n }}</a>{% endfor %}</div>
+    {% endif %}
+  </div>
+</section>
+
+{% for zone in data.ticket.zones %}
+<section class="panel zone-panel {{ 'flag' if zone.status in ['漏损','倒挂'] else ('watch' if zone.status=='待观察' else '') }}">
+  <div class="panel__head"><h2><span class="order">{{ zone.order }}</span>{{ zone.zone }} 区</h2><span>{{ zone.status }} · {{ zone.certainty }}</span></div>
+  <div class="panel__body">
+    <dl class="zone-figures">
+      <div><dt>残差</dt><dd>{{ zone.residual }}</dd></div>
+      <div><dt>可信区间</dt><dd>{{ zone.lower }} ~ {{ zone.upper }}</dd></div>
+      <div><dt>误差合计</dt><dd>{{ zone.uncertainty }}</dd></div>
+      <div><dt>流入 / 转供</dt><dd>{{ zone.inflow }} / {{ zone.outflow }}</dd></div>
+      <div><dt>售水 / 授权</dt><dd>{{ zone.sale }} / {{ zone.authorized }}</dd></div>
+    </dl>
+    <p class="basis"><b>处置：{{ zone.action }}。</b>{{ zone.basis }}</p>
+    <p class="transfer">跨区转供：{{ zone.transfer_text }}</p>
+    <details open><summary>原始读数（{{ zone.readings|length }} 行）</summary>
+      <div class="table-scroll">
+        <table class="ledger"><thead><tr><th>来源行</th><th>计量记录</th><th>表号</th><th>方向</th><th>类型</th><th>原始值</th><th>原单位</th><th>归一 / m³</th><th>误差 / %</th><th>流向</th></tr></thead><tbody>
+        {% for r in zone.readings %}<tr><td class="num">{{ r.line }}</td><td>{{ r.record_id }}</td><td>{{ r.meter }}</td><td>{{ r.direction }}</td><td>{{ r.kind }}</td><td class="num">{{ r.value }}</td><td>{{ r.unit }}</td><td class="num">{{ r.value_m3 }}</td><td class="num">{{ r.error_pct }}</td><td>{{ r.from_zone }} → {{ r.to_zone }}</td></tr>{% endfor %}
+        </tbody></table>
+      </div>
+    </details>
+  </div>
+</section>
+{% endfor %}
+
+<section class="panel comparison-panel">
+  <div class="panel__head"><h2>版本追溯</h2><span>{{ data.ticket.night }}</span></div>
+  <div class="panel__body">
+    <div class="history-list">
+    {% for item in data.ticket.history %}
+      <div class="diff-row"><span>v{{ item.version }}{% if item.version==data.ticket.version %} · 当前查看{% endif %}</span><b>{{ item.created_at }}</b><a class="btn" href="/tickets?night={{ data.ticket.night }}&version={{ item.version }}">查看</a></div>
+    {% endfor %}
+    </div>
+    <a class="btn" href="/api/tickets/{{ data.ticket.night }}/evidence.csv{% if data.ticket.is_historical %}?version={{ data.ticket.version }}{% endif %}">导出本版证据</a>
+    <a class="btn" href="/api/tickets/{{ data.ticket.night }}/history">版本清单 / JSON</a>
+  </div>
+</section>
+{% endblock %}
